@@ -345,10 +345,16 @@ void coarse_grain_field(struct vortex *vortex,
   FILE *coarse_grain;
   FILE *enstrophy_file;
 
+
+  if ((enstrophy_file = fopen("enstrophy_file", "wa")) == NULL){
+    printf("Can't open %s.\n","enstrophy_file");
+    exit(1);
+  }
+  
   char str_time[10];
   sprintf(str_time,"%08d",time); //convert current to a string   
 
-  
+
   //Make a grid that simply divides up the space:
   float length_scale = 1.2;  //large bins for testing
   int i, j, k;               //for loop control variable
