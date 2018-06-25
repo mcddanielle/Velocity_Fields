@@ -186,7 +186,8 @@ def particle_velocity_field(ax, filename="velocity_frame22000",
                             Sx=[0,60.0], Sy=[0,60.0],
                             BW=0, plot_log=0, scale=1.0,
                             xshift=0.0, yshift=0.0, 
-                            arrow_color='black',shrink=0):
+                            arrow_color='black',shrink=0,
+                            abs_SX = 60.0):
 
     '''Read in a formatted file containing a velocity field
     and make a vector plot
@@ -204,25 +205,24 @@ def particle_velocity_field(ax, filename="velocity_frame22000",
     #############################################################
     #Here we are typically centering the particles in the figure
     #############################################################
-    #beware, intentionally hardcoded
-    SX = 60.0
+    #beware, intentionally hardcoded, meant as an absolute size
     
     if xshift:
         for j in range(len(x)):
             x[j] = x[j]+xshift
-            if x[j] > SX:
-                x[j] -= SX
+            if x[j] > abs_SX:
+                x[j] -= abs_SX
             elif x[j] < 0.0:
-                x[j] += SX
+                x[j] += abs_SX
 
     if yshift:
         for j in range(len(y)):
             y[j] = y[j]+yshift
 
-            if y[j] > SX:
-                y[j] -= SX
+            if y[j] > abs_SX:
+                y[j] -= abs_SX
             elif y[j] < 0.0:
-                y[j] += SX
+                y[j] += abs_SX
 
     
     if shrink:
@@ -277,7 +277,9 @@ def particle_velocity_field(ax, filename="velocity_frame22000",
 #plot the velocity field of particles, format
 #id x y vx vy |v|
 ##################################################################
-def enstrophy_field(ax,filename="coarse_grain_field.txt",Sx=[0,60.0],Sy=[0,60.0],BW=0,plot_log=0,plot_cbar=1):
+def enstrophy_field(ax,filename="coarse_grain_field.txt",
+                    Sx=[0,60.0],Sy=[0,60.0],BW=0,plot_log=0,plot_cbar=1):
+    
     '''Read in a formatted file containing a velocity field
     and make a vector plot
     you could totally combine this with the curl field
@@ -323,7 +325,6 @@ def enstrophy_field(ax,filename="coarse_grain_field.txt",Sx=[0,60.0],Sy=[0,60.0]
     return #cset
 
 
-    
 #---------------------------------------------------------------------------
 #nominal main.c-------------------------------------------------------------
 #---------------------------------------------------------------------------
@@ -334,12 +335,17 @@ if __name__ == "__main__":
     #(1) single value of Nv, Fp, Np
     #2x2 figure
     ###################################################
+    
     N = 1075
     Sy = [0,60.0]
     Sx = [0,60.0]
     verbose = 1
 
-
+    if(verbose == 1):
+        print("Verbose settings, change as you see fit")
+        print("Size hardcoded to: ", Sx, Sy)
+        print("Number of particles (not used)", N)
+        
     #######################################################
     #define number of row/columns to make a gridded figure
     #######################################################
@@ -390,22 +396,22 @@ if __name__ == "__main__":
 
     #######################################
     #Iterate through grid adding subplots
-        
-    #by rights, should be a loop, 
-    #but the function called is different every time
+    #the function called is different every time
     #######################################
+    
     i = 0
+    
     for a in range(rows):
         for b in range(columns):
+            
             if verbose:
-                print("a=",a,"b=",b)
+                print("Plotting grid position: a=",a,"b=",b)
 
             #grab a grid pointer
             plot_position = G[a,b]    
 
             #make a subplot at that location
             ax = fig.add_subplot(plot_position)        
-            print(ax)
             
             #grab file from the declared list
             file = field_file
@@ -414,16 +420,30 @@ if __name__ == "__main__":
             #Case/Switch (ish) to plot (a-d)
             ##########################################
             if i == 0:    #(a) GR plot
-                particle_velocity_field(ax,filename=particle_file)
+                particle_velocity_field(ax,filename=particle_file,Sx=Sx,Sy=Sy)
+                
+                if verbose:
+                    print("plotting velocity vectors in panel (a) - colored by velocity")
 
             elif i == 1:  #(b) plot the curl of the velocity field
-                plot_velocity_field(ax,filename=file,plot_curl=1)
+                plot_velocity_field(ax,filename=file,plot_curl=1,Sx=Sx,Sy=Sy)
+
+                if verbose:
+                    print("plotting curl of field in panel (b)")
 
             elif i == 2:  #(c) plot the arrows, sized by magnitude
-                plot_velocity_field(ax,filename=file,plot_coarse_field=1)
+                plot_velocity_field(ax,filename=file,plot_coarse_field=1,Sx=Sx,Sy=Sy)
+                
+                if verbose:
+                    print("plotting goofy vectors in (c) - sized by magnitude")
+                
 
             elif i == 3:  #(d) plot the enstrophy
-                enstrophy_field(ax,filename=file,plot_cbar=1)
+                enstrophy_field(ax,filename=file,plot_cbar=1,Sx=Sx,Sy=Sy)
+                
+                if verbose:
+                    print("plotting enstrophy (vortical kinetic energy) (d)")
+                
 
             else:
                 print("some error in grid, plots, etc")
