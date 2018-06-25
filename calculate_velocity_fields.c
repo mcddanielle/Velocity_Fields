@@ -17,6 +17,10 @@
 
 #define PI 3.14159265359
 #define DEBUG 0
+#define FILE_TYPE 0
+
+FILE *coarse_grain;
+FILE *enstrophy_file;
 
 struct vortex{
   int id;
@@ -109,8 +113,15 @@ main(int argc,char *argv[])
 
   get_parameters_file(&parameters, &syssize);
   
-  vortex=malloc(parameters.maxnum*sizeof(struct vortex));
+  vortex=malloc((parameters.maxnum+1)*sizeof(struct vortex));
 
+  //open and close file to clear it:
+  if ((enstrophy_file = fopen("enstrophy_file", "w")) == NULL){
+    printf("Can't open %s.\n","enstrophy_file");
+    exit(1);
+  }
+  fclose(enstrophy_file);
+  
   //loop through all of the printed times from writemovietime
   for(time=parameters.writemovietime;
       time < parameters.maxtime;
@@ -175,8 +186,10 @@ int read_frame(FILE *in,int time, int *nV, struct vortex *vortex)
    */
 
   n_scan = fscanf(in,"%s %s %s %d\n",str1,str2,str3,nV);
-  n_scan = fscanf(in,"%s %d\n",str1,&int_junk);
-  n_scan = fscanf(in,"%s %d\n",str1,&int_junk);
+  if(FILE_TYPE == 1){
+    n_scan = fscanf(in,"%s %d\n",str1,&int_junk);
+    n_scan = fscanf(in,"%s %d\n",str1,&int_junk);
+  }
   n_scan = fscanf(in,"%s %s %d\n",str1,str2,&time);
   n_scan = fscanf(in,"%s %s %s %s %s %s %s %s\n",str1,str2,str3,str4,str5,str6,str7,str8);
 
@@ -274,11 +287,11 @@ void get_parameters_file(struct parameters *parameters,
   //--where it is appropriate to accurately calculate maxnum
   //--based on particle sizes
 
-  double prefix = (*syssize).SX*(*syssize).SY/PI;
-  double phiS_term = (*parameters).phi2_small/( (*parameters).radius_small*(*parameters).radius_small) ;
-  double phiB_term = (*parameters).phi1_big/( (*parameters).radius_large*(*parameters).radius_large);
+  double prefix = (*syssize).SX*(*syssize).SY/(PI*(*parameters).radius_small*(*parameters).radius_small);
+  //double phiS_term = (*parameters).phi2_small/( (*parameters).radius_small*(*parameters).radius_small) ;
+  //double phiB_term = (*parameters).phi1_big/( (*parameters).radius_large*(*parameters).radius_large);
    
-  (*parameters).maxnum= (int) floor(prefix * (phiS_term + phiB_term));
+  (*parameters).maxnum= (int) ceil(prefix * (*parameters).density);
   if(DEBUG) printf("\n maxnum is: %d\n", (*parameters).maxnum);
   //--
   
@@ -337,16 +350,14 @@ void distance(double *dr,double *dx,double *dy,double x1,double y1,
 /*--------------------------------------------------------------*/
 /*--------------------------------------------------------------*/
 
+
 void coarse_grain_field(struct vortex *vortex,
 			int num_vor,
 			struct syssize syssize,
 			int time){
 
-  FILE *coarse_grain;
-  FILE *enstrophy_file;
 
-
-  if ((enstrophy_file = fopen("enstrophy_file", "wa")) == NULL){
+  if ((enstrophy_file = fopen("enstrophy_file", "a")) == NULL){
     printf("Can't open %s.\n","enstrophy_file");
     exit(1);
   }
@@ -504,6 +515,7 @@ void coarse_grain_field(struct vortex *vortex,
     
 
      fprintf(enstrophy_file,"%d \t %f \n", time, system_enstrophy);
+     //printf("%d \t %f \n", time, system_enstrophy);
      fclose(enstrophy_file);
 
    return;
