@@ -16,11 +16,10 @@
 #include<string.h>
 
 #define PI 3.14159265359
-#define DEBUG 0
-#define FILE_TYPE 0
+#define DEBUG 1
+#define FILE_TYPE 1
 
 FILE *coarse_grain;
-FILE *enstrophy_file;
 
 struct vortex{
   int id;
@@ -80,7 +79,9 @@ struct syssize{
 
 
 void coarse_grain_field(struct vortex *vortex, int num_vor,
-			struct syssize syssize, int time);
+			struct syssize syssize, int time,
+			struct parameters parameters,
+			FILE *fpt_enstrophy);
   
 //DM read in Pa0 
 void get_parameters_file(struct parameters *parameters, struct syssize *syssize);
@@ -89,7 +90,8 @@ void get_parameters_file(struct parameters *parameters, struct syssize *syssize)
 main(int argc,char *argv[])
 {
   FILE *in,*out;
-  
+  FILE *enstrophy_file;
+ 
   struct syssize syssize;
 
   int completeframe;
@@ -120,7 +122,7 @@ main(int argc,char *argv[])
     printf("Can't open %s.\n","enstrophy_file");
     exit(1);
   }
-  fclose(enstrophy_file);
+
   
   //loop through all of the printed times from writemovietime
   for(time=parameters.writemovietime;
@@ -134,13 +136,14 @@ main(int argc,char *argv[])
     completeframe=read_frame(in,time,&nV,vortex);
 
     //accumulate the velocities into a field
-    coarse_grain_field(vortex,nV,syssize,time);
+    if(DEBUG == 2) printf(time);
+    coarse_grain_field(vortex,nV,syssize,time,parameters,enstrophy_file);
 
   }//end while loop
   
   printf("Reached frame %d\n",frame);
 
-
+  fclose(enstrophy_file);
 
 }//end main function
 
@@ -172,7 +175,7 @@ int read_frame(FILE *in,int time, int *nV, struct vortex *vortex)
     printf("Error opening file %s\n",ascii_file);
     exit(-1);
   }
-  else if(DEBUG){
+  else if(DEBUG == 2){
     printf("Opened %s\n",ascii_file);
   }
 
@@ -193,7 +196,7 @@ int read_frame(FILE *in,int time, int *nV, struct vortex *vortex)
   n_scan = fscanf(in,"%s %s %d\n",str1,str2,&time);
   n_scan = fscanf(in,"%s %s %s %s %s %s %s %s\n",str1,str2,str3,str4,str5,str6,str7,str8);
 
-    if(DEBUG){
+    if(DEBUG == 2){
       printf("%d %d \n",*nV,time);
       fflush(stdout);
   }
@@ -201,7 +204,7 @@ int read_frame(FILE *in,int time, int *nV, struct vortex *vortex)
   if(feof(in)) return 0;
   for(i=0;i<*nV;i++){
 
-    if(DEBUG) printf("%d %d\n",i,*nV);
+    if(DEBUG == 2) printf("%d %d\n",i,*nV);
     
     n_scan = fscanf(in,"%d %d %f %f %f %f %f %f\n",&(vortex[i].id),
 		    &(vortex[i].color), &xin, &yin, &fxin, &fyin, &zin, &speedin);
@@ -214,12 +217,14 @@ int read_frame(FILE *in,int time, int *nV, struct vortex *vortex)
     vortex[i].radius=(double)zin;
     vortex[i].clusterid=-1;
 
-    if(DEBUG){
+    if(DEBUG == 2){
       printf("%f %f %f %f %f \n",vortex[i].x, vortex[i].y, vortex[i].fx, vortex[i].fy, vortex[i].radius);
       fflush(stdout);
     }
       
   }
+
+  fclose(in);
   return 1;
   
 }
@@ -354,18 +359,11 @@ void distance(double *dr,double *dx,double *dy,double x1,double y1,
 void coarse_grain_field(struct vortex *vortex,
 			int num_vor,
 			struct syssize syssize,
-			int time){
+			int time,
+			struct parameters parameters,
+			FILE *enstrophy_file){
 
-
-  if ((enstrophy_file = fopen("enstrophy_file", "a")) == NULL){
-    printf("Can't open %s.\n","enstrophy_file");
-    exit(1);
-  }
   
-  char str_time[10];
-  sprintf(str_time,"%08d",time); //convert current to a string   
-
-
   //Make a grid that simply divides up the space:
   float length_scale = 1.2;  //large bins for testing
   int i, j, k;               //for loop control variable
@@ -373,8 +371,13 @@ void coarse_grain_field(struct vortex *vortex,
   int m, n, p, q;            //for grid counting
   
   //file to print to, hardwired name
-  char coarse_grain_file[120] = "velocity_data/field_";
-  strcat(coarse_grain_file,str_time);
+  char str_time[10];
+  char coarse_grain_file[120] = "field_data_";
+  
+  if(time == (parameters.maxtime - parameters.writemovietime)){
+    sprintf(str_time,"%08d",time); //convert current to a string  
+    strcat(coarse_grain_file,str_time);
+  }
 
   //calculate how many bins in x and y based on the length_scale
   double xmax = syssize.SX;
@@ -481,20 +484,29 @@ void coarse_grain_field(struct vortex *vortex,
      }
 		    
      /*------------------------------------------------------------------*/
-     /*------------------Open and print to enstrophy file----------------*/
+     /*------------------Open and print to curl/field file---------------*/
      /*------------------------------------------------------------------*/
+     
 
-       //print the data to a file
+     //print the data to a file
+
+     if(time == (parameters.maxtime - parameters.writemovietime)){
+
        if ((coarse_grain = fopen(coarse_grain_file, "w")) == NULL){
 	 printf("Can't open %s.\n",coarse_grain_file);
 	 exit(-1);
        }
 
-       fprintf(coarse_grain,"#%d \n #%d \n #%f \n",num_vor,time,system_enstrophy);   
+       if(DEBUG == 1){
+	 printf("file number %d\n", fileno(coarse_grain));
+	 fflush(stdout);
+       }
+       fprintf(coarse_grain,"#%d \n #%d \n #%f \n",
+	       num_vor,time,system_enstrophy);   
 
        for(j=0;j<x_bins;j++){
 	 for(k=0;k<y_bins;k++){
-
+	 
 	   double x = ((double)j + 0.5)*length_scale;
 	   double y = ((double)k + 0.5)*length_scale;
 
@@ -502,21 +514,22 @@ void coarse_grain_field(struct vortex *vortex,
 		   x, y,						\
 		   vx_field[j][k],  vy_field[j][k],			\
 		   curl_field[j][k], enstrophy_field[j][k]);
-
+	 
 	 }
        }
-   
-
-       fclose(coarse_grain);
+       fflush(coarse_grain);
      
+       fclose(coarse_grain);
+     }
+       
      /*------------------------------------------------------------------*/
-     /*------------- Close the enstrophy frame file ---------------------*/
+     /*------------- Print to the enstrophy frame file ------------------*/
      /*------------------------------------------------------------------*/
     
 
      fprintf(enstrophy_file,"%d \t %f \n", time, system_enstrophy);
      //printf("%d \t %f \n", time, system_enstrophy);
-     fclose(enstrophy_file);
+     //fclose(enstrophy_file);
 
    return;
 }//end subroutine coarse grain
