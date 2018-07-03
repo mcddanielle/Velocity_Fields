@@ -304,7 +304,7 @@ void get_parameters_file(struct parameters *parameters,
     num_scan = fscanf(in,"%s %lf\n",trash,&((*parameters).radius_large));
   }
   else{
-    (*parameters).radius_large = 1.0;
+    (*parameters).radius_large = 0.0;
   }
 
   if (DEBUG){
