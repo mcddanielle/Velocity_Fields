@@ -16,8 +16,9 @@
 #include<string.h>
 
 #define PI 3.14159265359
-#define DEBUG 1
-#define FILE_TYPE 1
+#define DEBUG 0
+#define FILE_TYPE 0
+#define ADRIAN 0
 
 FILE *coarse_grain;
 
@@ -86,8 +87,10 @@ void coarse_grain_field(struct vortex *vortex, int num_vor,
 //DM read in Pa0 
 void get_parameters_file(struct parameters *parameters, struct syssize *syssize);
  
+int read_frame(FILE *in,int time, int *nV, struct vortex *vortex);
 
-main(int argc,char *argv[])
+
+int main(int argc,char *argv[])
 {
   FILE *in,*out;
   FILE *enstrophy_file;
@@ -136,7 +139,7 @@ main(int argc,char *argv[])
     completeframe=read_frame(in,time,&nV,vortex);
 
     //accumulate the velocities into a field
-    if(DEBUG == 2) printf(time);
+    if(DEBUG == 2) printf("time %d\n",time);
     coarse_grain_field(vortex,nV,syssize,time,parameters,enstrophy_file);
 
   }//end while loop
@@ -145,6 +148,8 @@ main(int argc,char *argv[])
 
   fclose(enstrophy_file);
 
+  return 0;
+  
 }//end main function
 
 /*--------------------------------------------------------------*/
@@ -208,8 +213,28 @@ int read_frame(FILE *in,int time, int *nV, struct vortex *vortex)
     
     n_scan = fscanf(in,"%d %d %f %f %f %f %f %f\n",&(vortex[i].id),
 		    &(vortex[i].color), &xin, &yin, &fxin, &fyin, &zin, &speedin);
-		    
-
+    
+    //error checking - spot check these three values, should be enough
+    //more extensive checking would ensure the forces aren't unusally large
+    //and the radius is about the same size
+    if( vortex[i].id < 0 || vortex[i].id > *nV){
+      printf("Wrong number of vortices.  Vortex id: %d.",vortex[i].id);
+      printf("Check your file types (FILE_TYPE = %d  \n",FILE_TYPE);
+      printf("There are different headers in velocity_data/XV... files\n");
+      exit(-1);
+    }
+    if( xin < 0.0 || xin > 100000.0){
+      printf("x value too large.  x: %f.",xin);
+      printf("Check your file types.\n");
+      exit(-1);
+    }
+    if( yin < 0.0 || yin > 100000.0){
+      printf("y value too large.  y: %f.",yin);
+      printf("Check your file types.\n");
+      exit(-1);
+    }
+    
+    //assign values to vortex array
     vortex[i].x=(double)xin;
     vortex[i].y=(double)yin;
     vortex[i].fx=(double)fxin;
@@ -241,6 +266,7 @@ void get_parameters_file(struct parameters *parameters,
   double cellsize,length_scale;
   double resolution;
 
+  int num_scan;
   
   resolution=1e-6;
 
@@ -251,20 +277,13 @@ void get_parameters_file(struct parameters *parameters,
   else if (DEBUG) printf("reading Pa0.\n");
   fflush(stdout);
 
-  fscanf(in,"%s %lf\n",trash,&((*parameters).density));
-  fscanf(in,"%s %lf\n",trash,&((*parameters).phi2_small));
-  fscanf(in,"%s %lf\n",trash,&((*parameters).phi1_big));
-  fscanf(in,"%s %lf\n",trash,&((*parameters).pdensity));
-
-  //---------------------------------------------------------------------
-  double test1 = (*parameters).phi2_small + (*parameters).phi1_big;
-  if( fabs( ((*parameters).density-test1) >0.01) ){
-    printf("Inconsistency in requested densities.\n");
-    printf("Total density: %f\n", (*parameters).density);
-    printf("Small disk density: %f\n", (*parameters).phi2_small);
-    printf("Large disk density: %f\n", (*parameters).phi1_big);
-    exit(-1);
+  num_scan = fscanf(in,"%s %lf\n",trash,&((*parameters).density));
+  num_scan = fscanf(in,"%s %lf\n",trash,&((*parameters).phi2_small));
+  if(ADRIAN == 0){
+    num_scan = fscanf(in,"%s %lf\n",trash,&((*parameters).phi1_big));
   }
+  num_scan = fscanf(in,"%s %lf\n",trash,&((*parameters).pdensity));
+
   //---------------------------------------------------------------------
   
   if (DEBUG){
@@ -273,14 +292,20 @@ void get_parameters_file(struct parameters *parameters,
   }
 
   //-
-  fscanf(in,"%s %lf\n",trash,&((*syssize).SX));
+  num_scan = fscanf(in,"%s %lf\n",trash,&((*syssize).SX));
   (*syssize).SX2=(*syssize).SX*0.5;
   //--
-  fscanf(in,"%s %lf\n",trash,&((*syssize).SY));
+  num_scan = fscanf(in,"%s %lf\n",trash,&((*syssize).SY));
   (*syssize).SY2=(*syssize).SY*0.5;
   
-  fscanf(in,"%s %lf\n",trash,&((*parameters).radius_small));
-  fscanf(in,"%s %lf\n",trash,&((*parameters).radius_large));
+  num_scan = fscanf(in,"%s %lf\n",trash,&((*parameters).radius_small));
+  
+  if(ADRIAN == 0){    
+    num_scan = fscanf(in,"%s %lf\n",trash,&((*parameters).radius_large));
+  }
+  else{
+    (*parameters).radius_large = 1.0;
+  }
 
   if (DEBUG){
     printf("SX %f SY %f, \nr_s %f r_b %f\n", (*syssize).SX,
@@ -293,42 +318,41 @@ void get_parameters_file(struct parameters *parameters,
   //--based on particle sizes
 
   double prefix = (*syssize).SX*(*syssize).SY/(PI*(*parameters).radius_small*(*parameters).radius_small);
-  //double phiS_term = (*parameters).phi2_small/( (*parameters).radius_small*(*parameters).radius_small) ;
-  //double phiB_term = (*parameters).phi1_big/( (*parameters).radius_large*(*parameters).radius_large);
    
   (*parameters).maxnum= (int) ceil(prefix * (*parameters).density);
   if(DEBUG) printf("\n maxnum is: %d\n", (*parameters).maxnum);
   //--
   
-  fscanf(in,"%s %d\n",trash,&((*parameters).runtime));
-  fscanf(in,"%s %lf\n",trash,&((*parameters).runforce));
-  fscanf(in,"%s %lf\n",trash,&((*parameters).dt));
-  fscanf(in,"%s %d\n",trash,&((*parameters).maxtime));
-  fscanf(in,"%s %d\n",trash,&((*parameters).writemovietime));
-  fscanf(in,"%s %lf\n",trash,&((*parameters).kspring));
+  num_scan = fscanf(in,"%s %d\n",trash,&((*parameters).runtime));
+  num_scan = fscanf(in,"%s %lf\n",trash,&((*parameters).runforce));
+  num_scan = fscanf(in,"%s %lf\n",trash,&((*parameters).dt));
+  num_scan = fscanf(in,"%s %d\n",trash,&((*parameters).maxtime));
+  num_scan = fscanf(in,"%s %d\n",trash,&((*parameters).writemovietime));
+  num_scan = fscanf(in,"%s %lf\n",trash,&((*parameters).kspring));
   
-  fscanf(in,"%s %lf\n",trash,&cellsize); // size of lookup cell
-  fscanf(in,"%s %lf\n",trash,&((*parameters).potential_radius));
-  fscanf(in,"%s %lf\n",trash,&((*parameters).potential_mag));
+  num_scan = fscanf(in,"%s %lf\n",trash,&cellsize); // size of lookup cell
+  num_scan = fscanf(in,"%s %lf\n",trash,&((*parameters).potential_radius));
+  num_scan = fscanf(in,"%s %lf\n",trash,&((*parameters).potential_mag));
   
-  fscanf(in,"%s %lf\n",trash,&length_scale);
-  fscanf(in,"%s %lf\n",trash,&((*parameters).drive_mag));
-  fscanf(in,"%s %lf\n",trash,&((*parameters).drive_frq));
-  fscanf(in,"%s %d\n",trash,&((*parameters).decifactor));
+  num_scan = fscanf(in,"%s %lf\n",trash,&length_scale);
+  num_scan = fscanf(in,"%s %lf\n",trash,&((*parameters).drive_mag));
+  num_scan = fscanf(in,"%s %lf\n",trash,&((*parameters).drive_frq));
+  num_scan = fscanf(in,"%s %d\n",trash,&((*parameters).decifactor));
   
   //starting from a file?
-  fscanf(in,"%s %d\n",trash,&((*parameters).restart));
+  num_scan = fscanf(in,"%s %d\n",trash,&((*parameters).restart));
 
   //ramping the drive rate?
-  fscanf(in,"%s %d\n",trash,&((*parameters).drive_step_time));
-  fscanf(in,"%s %lf\n",trash,&((*parameters).drive_step_force));
+  num_scan = fscanf(in,"%s %d\n",trash,&((*parameters).drive_step_time));
+  num_scan = fscanf(in,"%s %lf\n",trash,&((*parameters).drive_step_force));
 
-  //don't bother with lookupdata
+  //don't bother setting lookupdata - no particle in cell method here.
+  //the velocity grid is hardcoded
   
   fclose(in);
 }
  
-
+//not used
 void distance(double *dr,double *dx,double *dy,double x1,double y1,
 	      double x2,double y2,struct syssize syssize)
 {
@@ -355,7 +379,6 @@ void distance(double *dr,double *dx,double *dy,double x1,double y1,
 /*--------------------------------------------------------------*/
 /*--------------------------------------------------------------*/
 
-
 void coarse_grain_field(struct vortex *vortex,
 			int num_vor,
 			struct syssize syssize,
@@ -379,14 +402,15 @@ void coarse_grain_field(struct vortex *vortex,
     strcat(coarse_grain_file,str_time);
   }
 
-  //calculate how many bins in x and y based on the length_scale
+  //for readability
   double xmax = syssize.SX;
   double ymax = syssize.SY;
 
   //calculate dvx/dy and dvy/dx for the curl
   double diff_vx_dy;
   double diff_vy_dx;
-	 
+
+  //calculate how many bins in x and y based on the length_scale (hardwired)
   int x_bins = (int)(xmax / length_scale);
   int y_bins = (int)(ymax / length_scale);
 
@@ -400,27 +424,32 @@ void coarse_grain_field(struct vortex *vortex,
   double vy_field[x_bins][y_bins];
   double curl_field[x_bins][y_bins];
   double enstrophy_field[x_bins][y_bins];
-  double system_enstrophy = 0;
+  double system_enstrophy = 0.0;
 
   //iterate over total number of bins, zeroing the values
    for(j=0;j<x_bins;j++){
      for(k=0;k<y_bins;k++){
+       
        vx_field[j][k]=0.0;
        vy_field[j][k]=0.0;
+       
        curl_field[j][k]=0.0;
+       
        enstrophy_field[j][k]=0.0;
 
      }
    }
 
-   //now iterate over the individual values of vx and vy, 
+   //now iterate over the individual particle
+   //i.e. values of x,vx and y,vy, 
    //writing them to the fields value by value
 
    for(i=0;i<num_vor;i++){
 
-     //identify x-bin
+     //identify x-bin location
      j = (vortex[i].x/xmax)*x_bins;
-     //identify y-bin
+     
+     //identify y-bin location
      k = (vortex[i].y/ymax)*y_bins;     
 
      //make sure the bin is within the array vx_field
@@ -429,11 +458,11 @@ void coarse_grain_field(struct vortex *vortex,
        vy_field[j][k] += vortex[i].fy;
      }
      else{
-       printf("j=%d,xbins=%d,k=%d,ybins=%d,x=%f,y=%f",j, \ 
+       printf("j=%d,xbins=%d,k=%d,ybins=%d,x=%f,y=%f",j, 
 	      x_bins,k,y_bins,j*length_scale,k*length_scale);
        
-       printf("\n Something buggy in your coarse graining\n");
-       exit(-1);
+       printf("\n Something bug in your data or coarse graining method\n");
+       exit(-1); 
      }
    }
 
